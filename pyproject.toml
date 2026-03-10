@@ -1,0 +1,15 @@
+[project]
+name = "izimir"
+version = "0.1.0"
+description = "Telegram userbot for real estate monitoring in Izmir"
+requires-python = ">=3.11"
+dependencies = [
+    "telethon>=1.36",
+    "aiosqlite>=0.20",
+    "apscheduler>=3.10,<4",
+    "python-dotenv>=1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

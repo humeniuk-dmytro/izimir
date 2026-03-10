@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Env
+.env
+
+# Telegram sessions
+*.session
+*.session-journal
+
+# Database & data
+data/
+*.db
+
+# Logs
+logs/
+
+# UV
+.python-version

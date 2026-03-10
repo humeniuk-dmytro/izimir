@@ -1,0 +1,14 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    working_dir: /app
+    environment:
+      - DB_PATH=data/izimir.db
+      - USER_SESSION=data/user_session
+      - BOT_SESSION=data/bot_session
+    stdin_open: true
+    tty: true
