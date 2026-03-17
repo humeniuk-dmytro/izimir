@@ -13,7 +13,8 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS monitored_groups (
 
 CREATE TABLE IF NOT EXISTS keywords (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    keyword TEXT    UNIQUE NOT NULL COLLATE NOCASE
+    keyword    TEXT    UNIQUE NOT NULL COLLATE NOCASE,
+    date_added TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS processed_messages (
