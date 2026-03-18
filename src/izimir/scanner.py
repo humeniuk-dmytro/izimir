@@ -63,7 +63,7 @@ async def run_scan(
                         entity,
                         limit=settings.messages_limit,
                     ):
-                        if msg.date and msg.date.replace(tzinfo=timezone.utc) < since:
+                        if msg.date and msg.date < since:
                             break
 
                         if not msg.text:
