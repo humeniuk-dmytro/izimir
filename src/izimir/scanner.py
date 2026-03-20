@@ -140,6 +140,10 @@ async def run_scan(
             )
             raise
 
+        deleted = await db.cleanup_processed_messages(keep_days=7)
+        if deleted:
+            log.info("Cleaned up %d old processed_messages entries", deleted)
+
         await db.finish_scan(
             scan_id,
             datetime.now(timezone.utc).isoformat(),

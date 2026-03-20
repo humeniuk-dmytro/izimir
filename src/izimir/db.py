@@ -117,6 +117,19 @@ class Database:
         await self.db.execute("INSERT OR IGNORE INTO processed_messages (message_id, group_id) VALUES (?, ?)", (message_id, group_id))
         await self.db.commit()
 
+
+    async def cleanup_processed_messages(self, keep_days: int = 7) -> int:
+        """Delete processed_messages older than *keep_days* days.
+
+        Returns the number of rows deleted.
+        """
+        cur = await self.db.execute(
+            "DELETE FROM processed_messages WHERE date_processed < datetime('now', ?)",
+            (f"-{keep_days} days",),
+        )
+        await self.db.commit()
+        return cur.rowcount
+
     async def start_scan(self, started_at: str) -> int:
         cur = await self.db.execute("INSERT INTO scan_log (started_at) VALUES (?)", (started_at,))
         await self.db.commit()
