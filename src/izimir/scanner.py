@@ -17,6 +17,11 @@ log = logging.getLogger(__name__)
 _scan_lock = asyncio.Lock()
 
 
+def is_scanning() -> bool:
+    """Return True if a scan is currently in progress."""
+    return _scan_lock.locked()
+
+
 async def run_scan(
     user_client: TelegramClient,
     bot_client: TelegramClient,

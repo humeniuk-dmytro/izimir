@@ -12,7 +12,7 @@ from telethon.tl.types import Channel
 
 from izimir.config import Settings
 from izimir.db import Database
-from izimir.scanner import run_scan
+from izimir.scanner import run_scan, is_scanning
 
 log = logging.getLogger(__name__)
 
@@ -164,8 +164,7 @@ def register_handlers(
     @bot_client.on(events.NewMessage(pattern=r"^/scan$"))
     @owner_only
     async def cmd_scan(event):
-        from izimir.scanner import _scan_lock
-        if _scan_lock.locked():
+        if is_scanning():
             await event.respond("⏳ Scan already in progress…")
             return
         await event.respond("🔍 Starting scan…")
