@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import re
 
@@ -24,6 +25,7 @@ def register_handlers(
     settings: Settings,
 ) -> None:
     def owner_only(func):
+        @functools.wraps(func)
         async def wrapper(event):
             if event.sender_id != settings.owner_id:
                 return
