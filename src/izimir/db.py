@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import aiosqlite
 
 from izimir.normalize import fold
@@ -49,6 +51,16 @@ CREATE TABLE IF NOT EXISTS finds (
     msg_link        TEXT,
     found_at        TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(message_id, group_id)
+);
+
+CREATE TABLE IF NOT EXISTS command_queue (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    type        TEXT NOT NULL,
+    payload     TEXT NOT NULL DEFAULT '{}',
+    status      TEXT NOT NULL DEFAULT 'pending',
+    result      TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT
 );
 """
 
@@ -308,3 +320,56 @@ class Database:
         cur = await self.db.execute("DELETE FROM processed_messages")
         await self.db.commit()
         return cur.rowcount
+
+    # --- command queue (Mini App → bot bridge) ---------------------------
+
+    async def enqueue_command(self, type_: str, payload: dict | None = None) -> int:
+        cur = await self.db.execute(
+            "INSERT INTO command_queue (type, payload) VALUES (?, ?)",
+            (type_, json.dumps(payload or {})),
+        )
+        await self.db.commit()
+        assert cur.lastrowid is not None
+        return cur.lastrowid
+
+    async def claim_pending_command(self) -> dict | None:
+        """Atomically pick the oldest pending command and mark it running."""
+        cur = await self.db.execute(
+            "SELECT id, type, payload FROM command_queue "
+            "WHERE status = 'pending' ORDER BY id LIMIT 1"
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        upd = await self.db.execute(
+            "UPDATE command_queue SET status = 'running', updated_at = datetime('now') "
+            "WHERE id = ? AND status = 'pending'",
+            (row["id"],),
+        )
+        await self.db.commit()
+        if upd.rowcount == 0:
+            return None  # raced with another worker
+        return {
+            "id": row["id"],
+            "type": row["type"],
+            "payload": json.loads(row["payload"]),
+        }
+
+    async def finish_command(
+        self, command_id: int, status: str, result: str = ""
+    ) -> None:
+        await self.db.execute(
+            "UPDATE command_queue SET status = ?, result = ?, "
+            "updated_at = datetime('now') WHERE id = ?",
+            (status, result, command_id),
+        )
+        await self.db.commit()
+
+    async def get_command(self, command_id: int) -> dict | None:
+        cur = await self.db.execute(
+            "SELECT id, type, status, result, created_at "
+            "FROM command_queue WHERE id = ?",
+            (command_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
