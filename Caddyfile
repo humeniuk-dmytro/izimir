@@ -1,0 +1,6 @@
+# Auto-HTTPS reverse proxy for the Mini App.
+# {$DOMAIN} comes from WEBAPP_DOMAIN in .env (e.g. izimir.duckdns.org).
+# Caddy obtains and renews a free Let's Encrypt certificate automatically.
+{$DOMAIN} {
+    reverse_proxy web:8000
+}

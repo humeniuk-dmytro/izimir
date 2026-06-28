@@ -5,10 +5,43 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
-    working_dir: /app
     environment:
       - DB_PATH=data/izimir.db
       - USER_SESSION=data/user_session
       - BOT_SESSION=data/bot_session
-    stdin_open: true
+    stdin_open: true   # потрібно для першої авторизації (номер + код)
     tty: true
+
+  # Mini App (FastAPI). Вмикається разом із bot; ділить ту саму SQLite (WAL).
+  web:
+    build: .
+    restart: unless-stopped
+    command: ["uv", "run", "--no-sync", "python", "-m", "izimir.webapp"]
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DB_PATH=data/izimir.db
+    expose:
+      - "8000"
+
+  # Безкоштовний авто-HTTPS (Let's Encrypt) для Mini App.
+  # WEBAPP_DOMAIN — твій DuckDNS-субдомен, напр. izimir.duckdns.org
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${WEBAPP_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
