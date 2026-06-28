@@ -1,0 +1,23 @@
+# Secrets & runtime state — must never enter the image
+.env
+.env.*
+data/
+logs/
+*.session
+*.session-journal
+
+# Python / build artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Dev-only
+tests/
+.git/
+.gitignore
+.idea/
+.vscode/
+README.md
+tech.md
