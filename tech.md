@@ -1,66 +1,65 @@
-# Izimir — Технический отчёт о реализации
+# Izimir — Implementation Report
 
-**Проект:** Telegram-бот мониторинга недвижимости (Турция, Измир)
-**Заказчик:** частный риелтор / агент по недвижимости
-**Статус:** реализовано полностью, покрыто автотестами, проверено на живом аккаунте.
+**Project:** Telegram bot for real-estate monitoring (İzmir, Turkey)
+**Client:** a private realtor / real-estate agent
+**Status:** fully implemented, covered by automated tests, verified on a live account.
 
-> Этот отчёт отражает **фактическую** реализацию. Где ранний черновик ТЗ описывал иное
-> поведение, отличия отмечены ⚠️.
+> The **product** (bot, Mini App, notifications) is in **Russian** per the client's spec
+> (the client is a Russian-speaking realtor). Code, docs and repo are in English.
+> Where an early ТЗ draft described different behavior, the differences are marked ⚠️.
 
 ---
 
-## 1. Архитектура
+## 1. Architecture
+Two Telethon clients in a single asyncio loop:
+- **User client** (phone-number auth) — reads group history, joins/leaves groups, resolves links.
+  Needed because the Bot API has no access to group history.
+- **Bot client** (token from @BotFather) — owner commands and notifications with inline buttons.
 
-Два Telethon-клиента в одном asyncio-цикле:
-- **User-клиент** (авторизация по номеру) — читает историю групп, вступает/покидает группы,
-  резолвит ссылки. Нужен, потому что Bot API не даёт доступа к истории групп.
-- **Bot-клиент** (токен @BotFather) — команды владельца и отправка уведомлений с inline-кнопками.
+Files: `clients.py`, `__main__.py`.
 
-Файлы: `clients.py`, `__main__.py`.
-
-## 2. Управление группами
-`/add_group <ссылка>` (user-аккаунт вступает: `JoinChannelRequest` / `ImportChatInviteRequest`),
-`/remove_group <ссылка>` (выходит: `LeaveChannelRequest`), `/list_groups` (с отметками ✅/❌).
-Таблица `monitored_groups`: `id, group_id (UNIQUE), group_link, group_title, access_hash,
+## 2. Group management
+`/add_group <link>` (user account joins via `JoinChannelRequest` / `ImportChatInviteRequest`),
+`/remove_group <link>` (leaves via `LeaveChannelRequest`), `/list_groups` (with ✅/❌ flags).
+Table `monitored_groups`: `id, group_id (UNIQUE), group_link, group_title, access_hash,
 is_active, date_added`.
 
-✅ **Улучшение надёжности:** сохраняется `access_hash` группы, и скан резолвит группу через
-`InputPeerChannel(id, access_hash)` → ссылка → bare id. Это устраняет «тихий» отказ сканирования
-после перелогина user-аккаунта с новой сессией (частая причина «бот ничего не находит»).
+✅ **Robustness:** the group's `access_hash` is stored, and scanning resolves the group via
+`InputPeerChannel(id, access_hash)` → link → bare id. This removes the silent scan failure after
+the user account re-authenticates with a fresh session (a common cause of "the bot finds nothing").
 
-## 3. Управление ключевыми словами
-`/add_keyword`, `/remove_keyword`, `/list_keywords`. Таблица `keywords`: `id, keyword, language,
-date_added` (язык определяется автоматически: кириллица → `ru`, латиница → `tr`).
+## 3. Keyword management
+`/add_keyword`, `/remove_keyword`, `/list_keywords`. Table `keywords`: `id, keyword, language,
+date_added` (language auto-detected: Cyrillic → `ru`, Latin → `tr`).
 
-⚠️ **Исправление дедупликации.** Ранний вариант полагался на `UNIQUE COLLATE NOCASE`, но SQLite
-NOCASE сворачивает регистр **только для ASCII** — кириллица/турецкий не дедуплицировались
-(`Снять` и `снять` считались разными). Теперь дедуп и удаление идут через ту же нормализацию
-`fold()`, что и поиск, — регистр учитывается для всех языков.
+⚠️ **Dedup fix.** An early variant relied on `UNIQUE COLLATE NOCASE`, but SQLite NOCASE folds
+case **only for ASCII** — Cyrillic/Turkish keywords were not deduplicated (`Снять` and `снять`
+were considered different). Dedup and removal now go through the same `fold()` normalization as the
+search, so case is handled for all languages.
 
-## 4. Логика поиска
-Раз в день по расписанию (`SCAN_TIMES`, по умолчанию 09:00 и 18:00) + вручную `/scan`.
-Для каждой активной группы: `iter_messages` до `MESSAGES_LIMIT`, остановка по выходу за окно
-времени, проверка ключевых слов, пропуск уже отправленных, отправка владельцу, запись в БД.
+## 4. Search logic
+Twice a day on schedule (`SCAN_TIMES`, default 09:00 and 18:00) plus manual `/scan`. For each active
+group: `iter_messages` up to `MESSAGES_LIMIT`, stop when out of the time window, check keywords, skip
+already-forwarded, send to the owner, save to DB.
 
-⚠️ **Ключевое исправление поиска (RU/UA/TR).** Ранний вариант сравнивал по `keyword in
-text.lower()`. Это давало два бага:
-1. **Турецкий регистр.** `"SATILIK".lower()` в Python → `"satilik"` с обычной `i`, а ключ
-   `satılık` содержит `ı` (без точки) — **совпадения не было**. Аналогично `İzmir`/`IZMIR`.
-   Теперь `fold()` приводит турецкие `I/İ/ı/i` к единому виду и снимает диакритику.
-2. **Словоформы.** `квартира` не находила `квартиру`/`квартиры` (подстрока не совпадает).
-   Теперь ключ приводится к **основе** (Snowball-стемминг для кириллицы), и `квартира` находит
-   все падежи. Турецкий — агглютинативный, основа уже является подстрокой словоформ.
+⚠️ **Key search fix (RU/UA/TR).** An early variant compared `keyword in text.lower()`, causing:
+1. **Turkish case.** `"SATILIK".lower()` in Python → `"satilik"` (dotted `i`), while the keyword
+   `satılık` has `ı` (dotless) — **no match**. Same for `İzmir`/`IZMIR`. Now `fold()` unifies Turkish
+   `I/İ/ı/i` and strips diacritics.
+2. **Inflections.** `квартира` did not find `квартиру`/`квартиры` (substring mismatch). The keyword is
+   now reduced to a **stem** (Russian Snowball for Cyrillic), so `квартира` finds all cases. Turkish
+   is agglutinative — the base is already a substring of inflected forms.
 
-✅ **Глубокий разовый скан:** `/scan 7` сканирует за указанное число **дней** (для бэкфилла истории),
-не меняя постоянную настройку `SCAN_HOURS`.
+✅ **Deep one-off scan:** `/scan 7` scans the last N **days** (history backfill) without changing the
+permanent `SCAN_HOURS`.
 
-✅ **Настраиваемое окно:** `SCAN_HOURS` в `.env`; показывается в ответе `/scan` и в `/help`.
+✅ **Configurable window:** `SCAN_HOURS` in `.env`; shown in the `/scan` reply and in `/help`.
 
-Защита: общий lock (ручной и плановый скан не пересекаются); `FloodWaitError` (≤60 c — ждём, иначе
-пропуск группы); `ChannelPrivateError` → группа деактивируется; ретрай отправки уведомления.
-Файлы: `scanner.py`, `scheduler.py`, `normalize.py`.
+Protection: a shared lock (manual and scheduled scans never overlap); `FloodWaitError` (≤60s → wait,
+otherwise skip the group); `ChannelPrivateError` → group deactivated; notification send retry.
+Files: `scanner.py`, `scheduler.py`, `normalize.py`.
 
-## 5. Формат уведомления (русский, по ТЗ п.4)
+## 5. Notification format (Russian, per ТЗ §4)
 ```
 📢 Найдено потенциальное объявление
 👤 Автор: @username
@@ -68,54 +67,53 @@ text.lower()`. Это давало два бага:
 🕒 Дата: 21.02.2026 14:30
 💬 Сообщение: …
 ```
-Кнопки: 🔎 Открыть сообщение (`t.me/c/…` или `t.me/username/…`), 👥 Открыть группу,
-✉ Написать автору. Файл `formatter.py`. Все строки интерфейса вынесены в `texts.py` (русский).
+Buttons: 🔎 open message (`t.me/c/…` or `t.me/username/…`), 👥 open group, ✉ message the author.
+File `formatter.py`. All interface strings live in `texts.py` (Russian).
 
-## 6. Исключение дублей и история лидов
-`processed_messages` (`UNIQUE(message_id, group_id)`) — повторно ничего не пересылается.
-`/reset_seen` очищает её (полезно для переотправки/тестов).
+## 6. Duplicate prevention and lead history
+`processed_messages` (`UNIQUE(message_id, group_id)`) — nothing is forwarded twice. `/reset_seen`
+clears it (handy for re-sending / testing).
 
-✅ **Новое:** таблица `finds` хранит все найденные лиды (автор, текст, ссылка, время).
-`/stats` — всего / сегодня / за неделю / по группам. `/export` — выгрузка CSV (UTF-8 BOM для Excel).
+✅ **New:** the `finds` table stores every forwarded lead (author, text, link, time). `/stats` shows
+total / today / week / by group. `/export` produces a CSV (UTF-8 BOM for Excel).
 
-## 7. Интерфейс владельца
-`/help` — кол-во групп и слов, всего найдено, последний и **следующий** скан, окно поиска, список
-команд. ✅ **Slash-меню**: при старте регистрируется меню команд (`SetBotCommandsRequest`) — Telegram
-показывает подсказки под «/». ✅ Плановый скан при сбое **уведомляет владельца** (раньше только лог).
+## 7. Owner interface
+`/help` — number of groups and keywords, total found, last and **next** scan, search window, command
+list. ✅ **Slash menu:** the command menu is registered on startup (`SetBotCommandsRequest`) so
+Telegram shows hints under "/". ✅ A failed scheduled scan **notifies the owner** (previously only a log).
 
-## 8. Нефункциональные
-- Python 3.12+, Telethon ≥1.36, SQLite (`aiosqlite`), APScheduler, управление через `uv`.
-- ⚠️ **Docker исправлен:** образ теперь воспроизводимый (`uv.lock` + `uv sync --frozen`),
-  добавлен `.dockerignore` (секреты `.env`, `data/`, сессии, логи не попадают в образ),
-  добавлен `tzdata` (корректные таймзоны/расписание в slim-образе). Сборка проверена.
-- Логи: консоль + `logs/izimir.log` + `logs/errors.log` (ротация 5 МБ × 3). Команды владельца
-  логируются.
+## 8. Non-functional
+- Python 3.12+, Telethon ≥1.36, SQLite (`aiosqlite`), APScheduler, managed with `uv`.
+- ⚠️ **Docker fixed:** the image is now reproducible (`uv.lock` + `uv sync --frozen`), a
+  `.dockerignore` was added (secrets `.env`, `data/`, sessions, logs stay out of the image), and
+  `tzdata` was added (correct timezones/schedule in the slim image). Build verified.
+- Logs: console + `logs/izimir.log` + `logs/errors.log` (rotating 5 MB × 3). Owner commands are logged.
 
-## 9. Тесты
-`uv run pytest -q` — 66 тестов: нормализация/стемминг (RU/UA/TR, турецкий регистр,
-воспроизведение исходной жалобы), окно скана и дедуп, сохранение лидов и статистика, форматтер,
-парсинг `/scan N`, меню команд, интеграционный прогон `/stats`/`/export`/`/reset_seen`.
+## 9. Tests
+`uv run pytest -q` — 74 tests: normalization/stemming (RU/UA/TR, Turkish case, reproduction of the
+original complaint), scan window and dedup, lead persistence and stats, formatter, `/scan N` parsing,
+command menu, Mini App initData auth, and the command queue.
 
-## 10. Деплой на VPS (Docker)
+## 10. VPS deployment (Docker)
 ```bash
 cp .env.example .env && nano .env     # API_ID, API_HASH, BOT_TOKEN, OWNER_ID
 mkdir data
-docker compose run --rm bot           # первый запуск: номер телефона + код
-docker compose up -d                  # 24/7, авто-перезапуск
-docker compose logs -f                # логи
+docker compose run --rm bot           # first run: phone number + code
+docker compose up -d                  # 24/7, auto-restart
+docker compose logs -f                # logs
 ```
-Альтернатива без Docker — systemd-сервис (`uv run python -m izimir`, `Restart=always`).
+Without Docker — a systemd service (`uv run python -m izimir`, `Restart=always`).
 
-## 11. Telegram Mini App (веб-панель)
-Веб-интерфейс внутри Telegram (FastAPI + WebApp), рядом с ботом, общая SQLite (WAL).
-- **Вкладки:** Лиды (лента с поиском и ссылками), Слова, Группы, Статистика.
-- **Авторизация:** проверка Telegram `initData` (HMAC-SHA256 с `bot_token`), доступ только владельцу.
-- **Действия с user-аккаунтом** (добавить группу, скан) идут через очередь `command_queue`: веб
-  кладёт задачу, бот её выполняет и пишет результат — веб опрашивает статус.
-- **Бесплатный HTTPS:** Caddy (авто-Let's Encrypt) + бесплатный субдомен **DuckDNS**, без затрат.
-  В `.env`: `WEBAPP_DOMAIN`, `WEBAPP_URL`; `docker compose up -d` поднимает `bot` + `web` + `caddy`.
-  Кнопка Mini App ставится автоматически при старте (и/или через @BotFather `/setmenubutton`).
-- Файлы: `src/izimir/webapp/` (app.py, auth.py, static/), `queue_worker.py`, `groups.py`.
+## 11. Telegram Mini App (web panel)
+An in-Telegram web UI (FastAPI + WebApp) next to the bot, sharing the same SQLite (WAL).
+- **Tabs:** Leads (feed with search and links), Keywords, Groups, Stats.
+- **Auth:** Telegram `initData` validation (HMAC-SHA256 with `bot_token`), owner-only access.
+- **Actions needing the user account** (add group, scan) go through the `command_queue`: the web
+  enqueues a task, the bot runs it and writes the result, the web polls the status.
+- **Free HTTPS:** Caddy (auto Let's Encrypt) + a free **DuckDNS** subdomain, at no cost.
+  In `.env`: `WEBAPP_DOMAIN`, `WEBAPP_URL`; `docker compose up -d` brings up `bot` + `web` + `caddy`.
+  The Mini App button is set automatically on startup (and/or via @BotFather `/setmenubutton`).
+- Files: `src/izimir/webapp/` (app.py, auth.py, static/), `queue_worker.py`, `groups.py`.
 
-## 12. Не входит в эту версию
-- v2: гео-фильтр Izmir-only, категоризация (покупка/продажа/аренда), Google Sheets, AI-фильтрация.
+## 12. Out of scope (this version)
+- v2: Izmir-only geo filter, categorization (buy/sell/rent), Google Sheets export, AI filtering.
