@@ -20,6 +20,7 @@ class Settings:
     timezone: str = "Europe/Istanbul"
     messages_limit: int = 500
     rate_limit_delay: float = 2.0
+    scan_hours: int = 24
 
 
 def _require(name: str) -> str:
@@ -45,4 +46,5 @@ def load_settings() -> Settings:
         timezone=os.getenv("TIMEZONE", "Europe/Istanbul"),
         messages_limit=int(os.getenv("MESSAGES_LIMIT", "500")),
         rate_limit_delay=float(os.getenv("RATE_LIMIT_DELAY", "2.0")),
+        scan_hours=int(os.getenv("SCAN_HOURS", "24")),
     )
