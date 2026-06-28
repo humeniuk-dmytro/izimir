@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Izimir — панель</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🏠 Izimir</h1>
+      <button id="scanBtn" class="primary">🔍 Скан</button>
+    </header>
+
+    <nav id="tabs">
+      <button data-tab="leads" class="active">📢 Лиды</button>
+      <button data-tab="keywords">🔑 Слова</button>
+      <button data-tab="groups">👥 Группы</button>
+      <button data-tab="stats">📈 Статистика</button>
+    </nav>
+
+    <main>
+      <section id="leads" class="tab active">
+        <div class="row">
+          <input id="leadSearch" placeholder="Поиск по тексту…" />
+        </div>
+        <div id="leadsList" class="list"></div>
+      </section>
+
+      <section id="keywords" class="tab">
+        <div class="row">
+          <input id="kwInput" placeholder="новое слово (корень: квартир)" />
+          <button id="kwAdd" class="primary">＋</button>
+        </div>
+        <div id="kwList" class="list"></div>
+      </section>
+
+      <section id="groups" class="tab">
+        <div class="row">
+          <input id="grpInput" placeholder="https://t.me/…" />
+          <button id="grpAdd" class="primary">＋</button>
+        </div>
+        <div id="grpList" class="list"></div>
+      </section>
+
+      <section id="stats" class="tab">
+        <div id="statsBox" class="list"></div>
+      </section>
+    </main>
+
+    <div id="toast"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
