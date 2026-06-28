@@ -2,35 +2,26 @@
 
 > **Freelance project** · Built for a private real estate agent working in İzmir, Turkey
 
-A Telegram **userbot** that automatically monitors a curated list of Telegram groups for real estate listings, filters them by keyword, and forwards matching messages to the owner with quick-action buttons.
+A Telegram **userbot** that monitors a curated list of Telegram groups for real estate
+listings, filters them by keyword (case- and inflection-aware, RU/UA/TR), and forwards
+matching messages to the owner with quick-action buttons. Interface language: **Russian**
+(per client spec).
 
 ---
 
 ## ✨ Features
 
-- 📡 **Monitors Telegram groups** — public and private, via Telegram User API (Telethon)
-- 🔍 **Keyword filtering** — multilingual support (Russian / Ukrainian / Turkish), case-insensitive
-- ⏰ **Scheduled scans** — twice a day via cron (configurable times)
-- ⚡ **On-demand scan** — trigger manually with `/scan` at any time
-- 🔁 **Duplicate prevention** — already-seen messages are skipped
-- 🔘 **Inline action buttons** — each forwarded message includes:
-  - 🔎 *Open message in group*
-  - ✉ *Write to the author*
-- 🛠 **Full bot management** — manage groups and keywords via Telegram commands
-
----
-
-## 🧱 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Language | Python 3.11+ |
-| Telegram (userbot) | [Telethon](https://github.com/LonamiWebs/Telethon) |
-| Telegram (bot) | Telethon Bot API |
-| Database | SQLite via `aiosqlite` |
-| Scheduler | APScheduler (AsyncIO) |
-| Packaging | `uv` + `hatchling` |
-| Deployment | Docker / Docker Compose |
+- 📡 **Monitors Telegram groups** — public and private, via the Telegram User API (Telethon)
+- 🔍 **Smart keyword matching** — case-insensitive + **stemming**, so `квартира` also finds
+  `квартиру`/`квартиры`; correct **Turkish** case folding (`satılık` ↔ `SATILIK`, `İzmir`)
+- ⏰ **Scheduled scans** — twice a day via cron (configurable), plus on-demand `/scan`
+- 🔭 **Deep on-demand scan** — `/scan 30` widens the window (last N days) for backfill
+- 🔁 **Duplicate prevention** — already-seen messages are skipped (`/reset_seen` to re-send)
+- 🗂 **Lead history** — every forwarded listing is saved; `/stats` and CSV `/export`
+- 🔘 **Inline buttons** — open message · open group · write to author
+- 🧭 **Slash-command menu** — Telegram shows command hints under «/»
+- 🛡 **Robust** — stored `access_hash` (survives re-login), FloodWait handling, private-group
+  auto-deactivation, owner notified if a scheduled scan fails
 
 ---
 
@@ -38,53 +29,53 @@ A Telegram **userbot** that automatically monitors a curated list of Telegram gr
 
 | Command | Description |
 |---|---|
-| `/start` | Welcome message |
-| `/help` | Status: groups, keywords, last scan |
-| `/add_group <link>` | Add a group to monitoring |
-| `/remove_group <link>` | Remove a group |
-| `/list_groups` | Show all monitored groups |
-| `/add_keyword <word>` | Add a keyword |
-| `/remove_keyword <word>` | Remove a keyword |
-| `/list_keywords` | Show all keywords |
-| `/scan` | Run a scan immediately |
+| `/help` | Status: groups, keywords, last/next scan, window |
+| `/add_group <link>` · `/remove_group <link>` · `/list_groups` | Manage groups |
+| `/add_keyword <word>` · `/remove_keyword <word>` · `/list_keywords` | Manage keywords |
+| `/scan [days]` | Scan now; optional window in days (e.g. `/scan 7`) |
+| `/stats` | Lead statistics (total / today / week / by group) |
+| `/export` | Export all leads as a CSV file |
+| `/reset_seen` | Clear "already sent" so the next scan re-forwards matches |
+
+All commands are owner-only (`OWNER_ID`).
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (local)
 
 ```bash
-cp .env.example .env   # fill in your credentials
+cp .env.example .env   # fill in API_ID, API_HASH, BOT_TOKEN, OWNER_ID
 uv sync
-uv run python -m izimir   # first run will ask for your phone number
+uv run python -m izimir   # first run asks for phone number + code
 ```
-
----
 
 ## 🐳 Deploy with Docker
 
 ```bash
 cp .env.example .env
 mkdir data
-docker compose run --rm bot   # first run — Telegram authorization
+docker compose run --rm bot   # first run — Telegram authorization (phone + code)
 docker compose up -d          # run 24/7
 ```
 
+The image is reproducible (`uv.lock`, `uv sync --frozen`); secrets and runtime state are
+kept out via `.dockerignore`. SQLite DB and Telethon sessions live in the bind-mounted
+`./data`.
+
 ---
 
-## ⚙️ Configuration
-
-Create a `.env` file based on `.env.example`:
+## ⚙️ Configuration (`.env`)
 
 | Variable | Description |
 |---|---|
-| `API_ID` | Telegram API ID from [my.telegram.org](https://my.telegram.org) |
-| `API_HASH` | Telegram API Hash |
-| `BOT_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather) |
+| `API_ID`, `API_HASH` | Telegram API credentials (my.telegram.org) |
+| `BOT_TOKEN` | Bot token from @BotFather |
 | `OWNER_ID` | Your numeric Telegram user ID |
-| `SCAN_TIMES` | Scan schedule, e.g. `09:00,18:00` (default) |
-| `TIMEZONE` | Timezone, e.g. `Europe/Istanbul` (default) |
-| `MESSAGES_LIMIT` | Max messages per group per scan (default: `500`) |
-| `RATE_LIMIT_DELAY` | Delay between groups in seconds (default: `2.0`) |
+| `SCAN_TIMES` | Scheduled scans, e.g. `09:00,18:00` |
+| `SCAN_HOURS` | How far back each scan looks, hours (default `24`) |
+| `TIMEZONE` | e.g. `Europe/Istanbul` |
+| `MESSAGES_LIMIT` | Max messages per group per scan (default `500`) |
+| `RATE_LIMIT_DELAY` | Pause between groups, seconds (default `2.0`) |
 
 ---
 
@@ -92,28 +83,26 @@ Create a `.env` file based on `.env.example`:
 
 ```
 src/izimir/
-├── __main__.py      # Entry point, startup & shutdown
-├── bot_handlers.py  # All bot command handlers
-├── scanner.py       # Core scan logic with lock (no concurrent scans)
-├── scheduler.py     # APScheduler setup (cron-based)
-├── formatter.py     # Message formatting & inline buttons
-├── clients.py       # Telethon client factories
-├── db.py            # SQLite database layer
-└── config.py        # Settings loaded from .env
+├── __main__.py      # Entry point, logging, startup/shutdown, command menu
+├── bot_handlers.py  # All bot commands (owner-only)
+├── scanner.py       # Scan logic: window, matching, dedup, lead persistence
+├── normalize.py     # fold() + stem_key() — case/inflection-aware matching
+├── scheduler.py     # APScheduler cron + next_scan_time()
+├── formatter.py     # Notification text, inline buttons, lead fields
+├── clients.py       # Telethon client factories (user + bot)
+├── db.py            # SQLite: groups, keywords, processed, scan_log, finds
+├── texts.py         # All RU interface strings + command menu
+└── config.py        # Settings from .env
 ```
 
----
+## 🧪 Tests
 
-## 📋 How It Works
+```bash
+uv run pytest -q
+```
 
-1. The **userbot** joins the monitored groups using the owner's Telegram account
-2. Every scan loads messages from the last 24 hours for each active group
-3. Messages are checked against the keyword list
-4. Matched messages that haven't been seen before are forwarded to the owner
-5. Each forwarded message includes inline buttons to open the original or contact the author
-6. A **concurrent scan lock** prevents overlap between scheduled and manual scans
-
----
+Covers matching/stemming (RU/UA/TR), the scan window & dedup, lead persistence & stats,
+the formatter, and command parsing/menu.
 
 ## 📄 License
 
