@@ -106,7 +106,16 @@ docker compose logs -f                # логи
 ```
 Альтернатива без Docker — systemd-сервис (`uv run python -m izimir`, `Restart=always`).
 
-## 11. Не входит в эту версию
-- **Telegram Mini App** (веб-интерфейс) — отложено по решению заказчика; вынесено в отдельный этап
-  (требует домен + HTTPS). Таблица `finds` уже готовит почву для дашборда лидов.
+## 11. Telegram Mini App (веб-панель)
+Веб-интерфейс внутри Telegram (FastAPI + WebApp), рядом с ботом, общая SQLite (WAL).
+- **Вкладки:** Лиды (лента с поиском и ссылками), Слова, Группы, Статистика.
+- **Авторизация:** проверка Telegram `initData` (HMAC-SHA256 с `bot_token`), доступ только владельцу.
+- **Действия с user-аккаунтом** (добавить группу, скан) идут через очередь `command_queue`: веб
+  кладёт задачу, бот её выполняет и пишет результат — веб опрашивает статус.
+- **Бесплатный HTTPS:** Caddy (авто-Let's Encrypt) + бесплатный субдомен **DuckDNS**, без затрат.
+  В `.env`: `WEBAPP_DOMAIN`, `WEBAPP_URL`; `docker compose up -d` поднимает `bot` + `web` + `caddy`.
+  Кнопка Mini App ставится автоматически при старте (и/или через @BotFather `/setmenubutton`).
+- Файлы: `src/izimir/webapp/` (app.py, auth.py, static/), `queue_worker.py`, `groups.py`.
+
+## 12. Не входит в эту версию
 - v2: гео-фильтр Izmir-only, категоризация (покупка/продажа/аренда), Google Sheets, AI-фильтрация.

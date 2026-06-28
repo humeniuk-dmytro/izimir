@@ -149,3 +149,28 @@ async def test_clear_processed(db):
     await db.mark_processed(2, 1)
     assert await db.clear_processed() == 2
     assert not await db.is_processed(1, 1)
+
+
+# --- command queue (Mini App bridge) -------------------------------------
+
+
+async def test_command_queue_lifecycle(db):
+    cid = await db.enqueue_command("scan", {"days": 7})
+    assert cid > 0
+    cmd = await db.claim_pending_command()
+    assert cmd["id"] == cid
+    assert cmd["type"] == "scan"
+    assert cmd["payload"] == {"days": 7}
+    # claimed → більше не pending
+    assert await db.claim_pending_command() is None
+    await db.finish_command(cid, "done", "ок")
+    got = await db.get_command(cid)
+    assert got["status"] == "done"
+    assert got["result"] == "ок"
+
+
+async def test_command_queue_is_fifo(db):
+    a = await db.enqueue_command("scan", {})
+    b = await db.enqueue_command("add_group", {"link": "x"})
+    assert (await db.claim_pending_command())["id"] == a
+    assert (await db.claim_pending_command())["id"] == b

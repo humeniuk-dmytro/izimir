@@ -95,6 +95,23 @@ src/izimir/
 └── config.py        # Settings from .env
 ```
 
+## 📱 Mini App (optional)
+
+A Telegram Mini App (FastAPI + WebApp) gives an in-Telegram dashboard: browse
+leads, stats, manage keywords/groups, and trigger a scan. It shares the bot's
+SQLite DB (WAL). Actions needing the user account (add group, scan) are queued
+and executed by the bot. Access is owner-only (Telegram `initData` HMAC check).
+
+**Free HTTPS via DuckDNS + Caddy (no domain cost):**
+1. Register a free subdomain at https://www.duckdns.org and point it to your VPS IP.
+2. Open ports 80/443 on the VPS.
+3. In `.env` set `WEBAPP_DOMAIN=<you>.duckdns.org` and `WEBAPP_URL=https://<you>.duckdns.org`.
+4. `docker compose up -d` — Caddy auto-issues a Let's Encrypt cert.
+5. In @BotFather: `/setmenubutton` → your `WEBAPP_URL` (the bot also sets it on
+   startup when `WEBAPP_URL` is configured).
+
+Run locally: `uv run python -m izimir.webapp` (serves on `:8000`).
+
 ## 🧪 Tests
 
 ```bash
