@@ -4,18 +4,15 @@ import csv
 import functools
 import io
 import logging
-import re
 
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError, UserAlreadyParticipantError
 from telethon.tl.functions.bots import SetBotCommandsRequest
-from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest
-from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import BotCommand, BotCommandScopeDefault, Channel
+from telethon.tl.types import BotCommand, BotCommandScopeDefault
 
 from izimir import texts
 from izimir.config import Settings
 from izimir.db import Database
+from izimir.groups import add_group_by_link, remove_group_by_link
 from izimir.scanner import is_scanning, run_scan
 from izimir.scheduler import next_scan_time
 
@@ -28,6 +25,19 @@ async def set_bot_commands(bot_client: TelegramClient) -> None:
     await bot_client(
         SetBotCommandsRequest(
             scope=BotCommandScopeDefault(), lang_code="", commands=commands
+        )
+    )
+
+
+async def set_menu_button(bot_client: TelegramClient, url: str) -> None:
+    """Point the bot's menu button at the Mini App web URL (if configured)."""
+    from telethon.tl.functions.bots import SetBotMenuButtonRequest
+    from telethon.tl.types import BotMenuButtonWebApp, InputUserEmpty
+
+    await bot_client(
+        SetBotMenuButtonRequest(
+            user_id=InputUserEmpty(),
+            button=BotMenuButtonWebApp(text="📊 Панель", url=url),
         )
     )
 
@@ -103,59 +113,21 @@ def register_handlers(
     @owner_only
     async def cmd_add_group(event):
         link = event.pattern_match.group(1).strip()
-        invite_match = re.search(r"(?:t\.me/\+|t\.me/joinchat/)([a-zA-Z0-9_-]+)", link)
-
-        try:
-            if invite_match:
-                invite_hash = invite_match.group(1)
-                try:
-                    updates = await user_client(ImportChatInviteRequest(invite_hash))
-                    entity = updates.chats[0]
-                except UserAlreadyParticipantError:
-                    entity = await user_client.get_entity(link)
-            else:
-                entity = await user_client.get_entity(link)
-                if isinstance(entity, Channel):
-                    try:
-                        await user_client(JoinChannelRequest(entity))
-                    except UserAlreadyParticipantError:
-                        pass
-        except FloodWaitError as e:
-            await event.respond(texts.GROUP_FLOOD.format(seconds=e.seconds))
-            return
-        except Exception as e:
-            await event.respond(texts.GROUP_JOIN_FAILED.format(error=e))
-            return
-
-        group_id = entity.id
-        access_hash = getattr(entity, "access_hash", None)
-        title = (
-            getattr(entity, "title", "")
-            or getattr(entity, "username", "")
-            or str(group_id)
-        )
-
-        if await db.add_group(group_id, link, title, access_hash):
-            await event.respond(texts.GROUP_ADDED.format(title=title))
+        status, detail = await add_group_by_link(user_client, db, link)
+        if status == "added":
+            await event.respond(texts.GROUP_ADDED.format(title=detail))
+        elif status == "exists":
+            await event.respond(texts.GROUP_EXISTS.format(title=detail))
+        elif status == "flood":
+            await event.respond(texts.GROUP_FLOOD.format(seconds=detail))
         else:
-            await event.respond(texts.GROUP_EXISTS.format(title=title))
+            await event.respond(texts.GROUP_JOIN_FAILED.format(error=detail))
 
     @bot_client.on(events.NewMessage(pattern=r"^/remove_group (.+)"))
     @owner_only
     async def cmd_remove_group(event):
         link = event.pattern_match.group(1).strip()
-
-        try:
-            entity = await user_client.get_entity(link)
-            removed = await db.remove_group(entity.id)
-            if removed and isinstance(entity, Channel):
-                try:
-                    await user_client(LeaveChannelRequest(entity))
-                except Exception as e:
-                    log.warning("Failed to leave group %s: %s", link, e)
-        except Exception:
-            removed = await db.remove_group_by_link(link)
-
+        removed = await remove_group_by_link(user_client, db, link)
         if removed:
             await event.respond(texts.GROUP_REMOVED)
         else:

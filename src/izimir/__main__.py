@@ -8,7 +8,8 @@ from pathlib import Path
 from izimir.config import load_settings
 from izimir.clients import make_user_client, make_bot_client
 from izimir.db import Database
-from izimir.bot_handlers import register_handlers, set_bot_commands
+from izimir.bot_handlers import register_handlers, set_bot_commands, set_menu_button
+from izimir.queue_worker import run_queue_worker
 from izimir.scheduler import setup_scheduler
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -81,10 +82,18 @@ async def main() -> None:
     scheduler.start()
     log.info("Scheduler started with scan times: %s", settings.scan_times)
 
+    worker_task = asyncio.create_task(
+        run_queue_worker(user_client, bot_client, db, settings)
+    )
+    if settings.webapp_url:
+        await set_menu_button(bot_client, settings.webapp_url)
+        log.info("Mini App menu button set: %s", settings.webapp_url)
+
     log.info("Bot is running. Press Ctrl+C to stop.")
     try:
         await bot_client.run_until_disconnected()
     finally:
+        worker_task.cancel()
         scheduler.shutdown(wait=False)
         await db.close()
         log.info("Shutdown complete")
