@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import csv
 import functools
-import io
 import logging
 
 from telethon import TelegramClient, events
@@ -12,6 +10,7 @@ from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from izimir import texts
 from izimir.config import Settings
 from izimir.db import Database
+from izimir.exporter import leads_csv
 from izimir.groups import add_group_by_link, remove_group_by_link
 from izimir.scanner import is_scanning, run_scan
 from izimir.scheduler import next_scan_time
@@ -245,26 +244,9 @@ def register_handlers(
         if not finds:
             await event.respond(texts.EXPORT_EMPTY)
             return
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["found_at", "group", "author", "username", "text", "link"])
-        for f in reversed(finds):  # chronological order
-            writer.writerow(
-                [
-                    f["found_at"],
-                    f["group_title"],
-                    f["author"] or "",
-                    f["author_username"] or "",
-                    f["text"],
-                    f["msg_link"] or "",
-                ]
-            )
-        # utf-8-sig: BOM so Excel opens Cyrillic correctly
-        bio = io.BytesIO(buf.getvalue().encode("utf-8-sig"))
-        bio.name = "izimir_leads.csv"
         await bot_client.send_file(
             settings.owner_id,
-            bio,
+            leads_csv(finds),
             caption=texts.EXPORT_CAPTION.format(count=len(finds)),
         )
 

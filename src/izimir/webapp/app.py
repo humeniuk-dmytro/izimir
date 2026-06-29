@@ -14,9 +14,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from izimir import texts
 from izimir.config import load_settings
 from izimir.db import Database
-from izimir.texts import detect_language
+from izimir.scheduler import next_scan_time
 from izimir.webapp.auth import owner_from_init_data
 
 settings = load_settings()
@@ -61,6 +62,9 @@ async def api_leads(
     db: Database = Depends(get_db),
 ):
     finds = await db.recent_finds(limit=2000)
+    # Map group_id → link so each lead can render an "open group" button
+    # (the finds table doesn't store the link; the group may since be removed).
+    links = {gr["group_id"]: gr["group_link"] for gr in await db.list_groups()}
     g, query = group.casefold(), q.casefold()
     out = []
     for f in finds:
@@ -68,7 +72,7 @@ async def api_leads(
             continue
         if query and query not in (f["text"] or "").casefold():
             continue
-        out.append(f)
+        out.append({**f, "group_link": links.get(f["group_id"])})
         if len(out) >= limit:
             break
     return {"leads": out}
@@ -77,6 +81,20 @@ async def api_leads(
 @app.get("/api/stats")
 async def api_stats(_: dict = Depends(require_owner), db: Database = Depends(get_db)):
     return await db.find_stats()
+
+
+@app.get("/api/status")
+async def api_status(_: dict = Depends(require_owner), db: Database = Depends(get_db)):
+    """Owner status (mirrors /help): counts and scan schedule."""
+    nxt = next_scan_time(settings.scan_times, settings.timezone)
+    return {
+        "groups": await db.group_count(),
+        "keywords": await db.keyword_count(),
+        "total_found": await db.total_found(),
+        "last_scan": await db.last_scan(),
+        "next_scan": nxt.isoformat() if nxt else None,
+        "scan_hours": settings.scan_hours,
+    }
 
 
 @app.get("/api/keywords")
@@ -104,7 +122,9 @@ async def api_add_keyword(
     kw = (body.get("keyword") or "").strip()
     if not kw:
         raise HTTPException(status_code=400, detail="empty keyword")
-    added = await db.add_keyword(kw, detect_language(kw))
+    added = await db.add_keyword(kw, texts.detect_language(kw))
+    msg = texts.KEYWORD_ADDED if added else texts.KEYWORD_EXISTS
+    await db.enqueue_command("notify", {"text": msg.format(keyword=kw)})
     return {"added": added, "keyword": kw}
 
 
@@ -117,6 +137,8 @@ async def api_del_keyword(
     body = await request.json()
     kw = (body.get("keyword") or "").strip()
     removed = await db.remove_keyword(kw)
+    msg = texts.KEYWORD_REMOVED if removed else texts.KEYWORD_NOT_FOUND
+    await db.enqueue_command("notify", {"text": msg.format(keyword=kw)})
     return {"removed": removed}
 
 
@@ -157,6 +179,22 @@ async def api_scan(
     days = body.get("days")
     payload = {"days": days} if days else {}
     return {"command_id": await db.enqueue_command("scan", payload)}
+
+
+@app.post("/api/reset_seen")
+async def api_reset_seen(
+    _: dict = Depends(require_owner), db: Database = Depends(get_db)
+):
+    """Clear processed_messages (direct DB) and echo the result to the chat."""
+    cleared = await db.clear_processed()
+    await db.enqueue_command("notify", {"text": texts.RESET_DONE.format(count=cleared)})
+    return {"cleared": cleared}
+
+
+@app.post("/api/export")
+async def api_export(_: dict = Depends(require_owner), db: Database = Depends(get_db)):
+    """Queue a CSV export; the bot builds it and sends the file to the chat."""
+    return {"command_id": await db.enqueue_command("export", {})}
 
 
 @app.get("/api/command/{command_id}")

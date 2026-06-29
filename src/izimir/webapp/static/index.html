@@ -10,7 +10,10 @@
   <body>
     <header>
       <h1>🏠 Izimir</h1>
-      <button id="scanBtn" class="primary">🔍 Скан</button>
+      <div class="header-actions">
+        <button id="exportBtn" class="ghost">📄 CSV</button>
+        <button id="scanBtn" class="primary">🔍 Скан</button>
+      </div>
     </header>
 
     <nav id="tabs">
@@ -45,7 +48,9 @@
       </section>
 
       <section id="stats" class="tab">
+        <div id="statusBox" class="list"></div>
         <div id="statsBox" class="list"></div>
+        <button id="resetBtn" class="danger-outline">🧹 Сбросить «уже отправленные»</button>
       </section>
     </main>
 

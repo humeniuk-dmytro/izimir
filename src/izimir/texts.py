@@ -1,7 +1,7 @@
-"""Все строки интерфейса бота (русский язык, по ТЗ).
+"""All bot interface strings (Russian, per the client spec).
 
-Вынесено в один модуль, чтобы интерфейс легко поддерживать и при необходимости
-локализовать. Тексты соответствуют примерам из технического задания.
+Kept in a single module so the interface is easy to maintain and localize.
+The wording follows the examples from the technical specification (ТЗ).
 """
 
 from __future__ import annotations
@@ -76,6 +76,9 @@ SCAN_NOTHING_NEW = (
 SCAN_ERROR = "❌ Ошибка сканирования: {error}"
 SCAN_FAILED = "⚠️ Плановое сканирование завершилось с ошибкой. Подробности в логах."
 
+# Префикс для действий, запущенных из мини-приложения (дублируются в чат).
+MINIAPP_ACTION = "🔄 Из мини-приложения"
+
 # --- статистика / экспорт / сброс ----------------------------------------
 
 STATS = "📈 Статистика лидов\nВсего: {total}\nСегодня: {today}\nЗа неделю: {week}"
@@ -124,10 +127,10 @@ BOT_COMMANDS: list[tuple[str, str]] = [
 
 
 def detect_language(word: str) -> str:
-    """Грубое определение языка ключевого слова для поля keywords.language.
+    """Rough language guess for the keywords.language field.
 
-    Кириллица → ``ru`` (русский/украинский не различаем), латиница → ``tr``
-    (турецкий, по примерам ТЗ: Izmir, ev, satılık). Поле информационное.
+    Cyrillic → ``ru`` (Russian/Ukrainian not distinguished), Latin → ``tr``
+    (Turkish, per the ТЗ examples: Izmir, ev, satılık). Informational only.
     """
     if any("Ѐ" <= ch <= "ӿ" for ch in word):
         return "ru"

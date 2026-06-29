@@ -85,10 +85,39 @@ button.primary {
 .card .meta { color: var(--hint); font-size: 12px; margin-bottom: 6px; }
 .card .text { white-space: pre-wrap; word-break: break-word; }
 .card .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.card a, .pill {
+.card a {
   color: var(--link);
   text-decoration: none;
   font-size: 13px;
+}
+.pill {
+  color: var(--link);
+  background: var(--bg);
+  border: 1px solid var(--link);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.header-actions { display: flex; gap: 8px; align-items: center; }
+button.ghost {
+  border: 1px solid var(--button);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--bg);
+  color: var(--button);
+  font-weight: 600;
+}
+button.danger-outline {
+  width: 100%;
+  margin-top: 16px;
+  border: 1px solid #e0484e;
+  border-radius: 10px;
+  padding: 11px;
+  background: var(--bg);
+  color: #e0484e;
+  font-weight: 600;
 }
 
 .item {

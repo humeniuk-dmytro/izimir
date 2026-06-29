@@ -34,6 +34,15 @@ async function api(path, options = {}) {
 const esc = (s) =>
   (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
+// Open a link the Telegram way so it stays inside the app instead of bouncing
+// to Telegram Desktop. Falls back to window.open in a plain browser.
+function openTg(url) {
+  if (!url) return;
+  if (tg && tg.openTelegramLink && /^https:\/\/t\.me\//.test(url)) tg.openTelegramLink(url);
+  else if (tg && tg.openLink) tg.openLink(url);
+  else window.open(url, "_blank");
+}
+
 // --- tabs ---------------------------------------------------------------
 
 const loaders = {};
@@ -61,17 +70,23 @@ loaders.leads = async function () {
   box.innerHTML = data.leads
     .map((f) => {
       const author = f.author_username ? "@" + f.author_username : esc(f.author);
-      const links = [];
-      if (f.msg_link) links.push(`<a href="${f.msg_link}" target="_blank">🔎 Сообщение</a>`);
+      const btns = [];
+      if (f.msg_link)
+        btns.push(`<button class="pill" data-url="${esc(f.msg_link)}">🔎 Сообщение</button>`);
+      if (f.group_link)
+        btns.push(`<button class="pill" data-url="${esc(f.group_link)}">👥 Группа</button>`);
       if (f.author_username)
-        links.push(`<a href="https://t.me/${f.author_username}" target="_blank">✉ Автор</a>`);
+        btns.push(`<button class="pill" data-url="https://t.me/${esc(f.author_username)}">✉ Автор</button>`);
       return `<div class="card">
         <div class="meta">👤 ${author} · 👥 ${esc(f.group_title)} · 🕒 ${esc((f.found_at || "").slice(0, 16).replace("T", " "))}</div>
         <div class="text">${esc(f.text)}</div>
-        <div class="actions">${links.join("")}</div>
+        <div class="actions">${btns.join("")}</div>
       </div>`;
     })
     .join("");
+  box.querySelectorAll(".pill").forEach((b) => {
+    b.onclick = () => openTg(b.dataset.url);
+  });
 };
 
 let searchTimer;
@@ -147,12 +162,28 @@ document.getElementById("grpAdd").onclick = async () => {
 
 // --- stats --------------------------------------------------------------
 
+const fmtTime = (iso) => (iso ? esc(iso.slice(0, 16).replace("T", " ")) : "—");
+
 loaders.stats = async function () {
+  const st = await api("/api/status");
+  const ls = st.last_scan;
+  const lastStr = ls
+    ? `${fmtTime(ls.started_at)} · найдено ${ls.messages_found} · ${esc(ls.status)}`
+    : "—";
+  document.getElementById("statusBox").innerHTML = `
+    <div class="item"><span>Групп</span><b>${st.groups}</b></div>
+    <div class="item"><span>Ключевых слов</span><b>${st.keywords}</b></div>
+    <div class="item"><span>Найдено всего</span><b>${st.total_found}</b></div>
+    <div class="item"><span>Последний скан</span><span class="muted">${lastStr}</span></div>
+    <div class="item"><span>Следующий скан</span><span class="muted">${fmtTime(st.next_scan)}</span></div>
+    <div class="item"><span>Окно поиска</span><span class="muted">${st.scan_hours} ч</span></div>`;
+
   const s = await api("/api/stats");
   const byGroup = (s.by_group || [])
     .map(([t, c]) => `<div class="item"><span>${esc(t)}</span><b>${c}</b></div>`)
     .join("");
   document.getElementById("statsBox").innerHTML = `
+    <div class="muted" style="margin:12px 4px 4px">📈 Лиды:</div>
     <div class="item"><span>Всего</span><b>${s.total}</b></div>
     <div class="item"><span>Сегодня</span><b>${s.today}</b></div>
     <div class="item"><span>За неделю</span><b>${s.week}</b></div>
@@ -178,6 +209,17 @@ document.getElementById("scanBtn").onclick = async () => {
   const r = await api("/api/scan", { method: "POST", body: JSON.stringify(body) });
   toast("Сканирую…");
   pollCommand(r.command_id, () => loaders.leads());
+};
+
+document.getElementById("exportBtn").onclick = async () => {
+  const r = await api("/api/export", { method: "POST", body: JSON.stringify({}) });
+  toast("Готовлю CSV…");
+  pollCommand(r.command_id);
+};
+
+document.getElementById("resetBtn").onclick = async () => {
+  const r = await api("/api/reset_seen", { method: "POST", body: JSON.stringify({}) });
+  toast("Сброшено: " + r.cleared);
 };
 
 // --- init ---------------------------------------------------------------
