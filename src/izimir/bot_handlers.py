@@ -30,20 +30,24 @@ async def set_bot_commands(bot_client: TelegramClient) -> None:
 
 
 async def set_menu_button(bot_client: TelegramClient, url: str) -> None:
-    """Point the bot's menu button at the Mini App web URL (if configured)."""
+    """Point the bot's menu button at the Mini App web URL (if configured).
+
+    In the MTProto schema a web-app menu button is ``BotMenuButton(text, url)``
+    (the Bot API name ``MenuButtonWebApp`` has no separate Telethon type).
+    """
     from telethon.tl.functions.bots import SetBotMenuButtonRequest
-    from telethon.tl.types import BotMenuButtonWebApp, InputUserEmpty
+    from telethon.tl.types import BotMenuButton, InputUserEmpty
 
     await bot_client(
         SetBotMenuButtonRequest(
             user_id=InputUserEmpty(),
-            button=BotMenuButtonWebApp(text="📊 Панель", url=url),
+            button=BotMenuButton(text="📊 Панель", url=url),
         )
     )
 
 
 def _fmt_local(iso: str, tz: str) -> str:
-    """ISO timestamp → 'дд.мм.гггг чч:хх' in the given timezone."""
+    """ISO timestamp → 'dd.mm.yyyy hh:mm' in the given timezone."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -184,7 +188,7 @@ def register_handlers(
             return
         arg = event.pattern_match.group(1)
         if arg:
-            # аргумент — число ДНЕЙ; cap до года, чтобы избежать переполнения
+            # argument is a number of DAYS; cap at a year to avoid overflow
             days = min(int(arg), 365)
             hours_override = days * 24
             window = f"последние {days} дн."
@@ -244,7 +248,7 @@ def register_handlers(
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(["found_at", "group", "author", "username", "text", "link"])
-        for f in reversed(finds):  # хронологический порядок
+        for f in reversed(finds):  # chronological order
             writer.writerow(
                 [
                     f["found_at"],
@@ -255,7 +259,7 @@ def register_handlers(
                     f["msg_link"] or "",
                 ]
             )
-        # utf-8-sig: BOM, чтобы Excel корректно открыл кириллицу
+        # utf-8-sig: BOM so Excel opens Cyrillic correctly
         bio = io.BytesIO(buf.getvalue().encode("utf-8-sig"))
         bio.name = "izimir_leads.csv"
         await bot_client.send_file(
