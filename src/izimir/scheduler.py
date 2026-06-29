@@ -42,6 +42,55 @@ def next_scan_time(scan_times: list[str], tz: str) -> datetime | None:
     return min(candidates) if candidates else None
 
 
+async def run_scheduled_scan(
+    user_client: TelegramClient,
+    bot_client: TelegramClient,
+    db: Database,
+    settings: Settings,
+) -> None:
+    """Run a scan on schedule and ALWAYS report the outcome to the owner.
+
+    Reporting even on zero matches is important: otherwise a working schedule
+    looks broken (the owner sees nothing in the chat). On error the owner gets
+    ``SCAN_FAILED`` instead.
+    """
+    log.info("Scheduled scan starting")
+    try:
+        groups, checked, found, errors = await run_scan(
+            user_client, bot_client, db, settings
+        )
+    except Exception:
+        log.exception("Scheduled scan failed")
+        try:
+            await bot_client.send_message(settings.owner_id, texts.SCAN_FAILED)
+        except Exception:
+            log.exception("Failed to notify owner about scheduled scan failure")
+        return
+
+    log.info(
+        "Scheduled scan done: %d groups, %d checked, %d found, %d errors",
+        groups,
+        checked,
+        found,
+        errors,
+    )
+    body = texts.SCAN_DONE.format(
+        window=f"последние {settings.scan_hours} ч",
+        groups=groups,
+        checked=checked,
+        found=found,
+        errors=errors,
+    )
+    if found == 0 and checked > 0:
+        body += "\n\n" + texts.SCAN_NOTHING_NEW
+    try:
+        await bot_client.send_message(
+            settings.owner_id, f"{texts.SCHEDULED_PREFIX}\n{body}"
+        )
+    except Exception:
+        log.exception("Failed to send scheduled scan summary to owner")
+
+
 def setup_scheduler(
     user_client: TelegramClient,
     bot_client: TelegramClient,
@@ -50,32 +99,12 @@ def setup_scheduler(
 ) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=settings.timezone)
 
-    async def scheduled_scan() -> None:
-        log.info("Scheduled scan starting")
-        try:
-            groups_scanned, checked, found, errors = await run_scan(
-                user_client, bot_client, db, settings
-            )
-            log.info(
-                "Scheduled scan done: %d groups, %d checked, %d found, %d errors",
-                groups_scanned,
-                checked,
-                found,
-                errors,
-            )
-        except Exception:
-            log.exception("Scheduled scan failed")
-            # Notify the owner so a broken schedule does not go unnoticed.
-            try:
-                await bot_client.send_message(settings.owner_id, texts.SCAN_FAILED)
-            except Exception:
-                log.exception("Failed to notify owner about scheduled scan failure")
-
     for time_str in settings.scan_times:
         hour, minute = time_str.split(":")
         scheduler.add_job(
-            scheduled_scan,
+            run_scheduled_scan,
             CronTrigger(hour=int(hour), minute=int(minute)),
+            args=[user_client, bot_client, db, settings],
             id=f"scan_{time_str}",
             replace_existing=True,
         )
