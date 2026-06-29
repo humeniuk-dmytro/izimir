@@ -1,7 +1,7 @@
-"""Тести run_scan: часове вікно, дедуплікація, метрики, матчинг.
+"""Tests for run_scan: time window, dedup, metrics, matching.
 
-Telegram-клієнти мокаються, БД — реальна in-memory. Це відтворює повний
-шлях сканування без мережі.
+Telegram clients are mocked, the DB is a real in-memory one. This reproduces
+the full scan path without the network.
 """
 
 from __future__ import annotations
@@ -90,11 +90,11 @@ async def test_finds_fresh_matching_message(db):
 
 async def test_old_messages_break_scan(db):
     await _seed_group_and_keywords(db, ["квартира"])
-    # newest-first: свіже (підходить), потім старе (за межами вікна → break)
+    # newest-first: fresh (matches), then old (outside the window → break)
     user = FakeUserClient(
         [
             FakeMessage(2, "квартира свежая", minutes_ago=10),
-            FakeMessage(1, "квартира старая", minutes_ago=60 * 30),  # 30 год тому
+            FakeMessage(1, "квартира старая", minutes_ago=60 * 30),  # 30 hours ago
         ]
     )
     bot = FakeBotClient()
@@ -103,13 +103,13 @@ async def test_old_messages_break_scan(db):
         user, bot, db, make_settings(scan_hours=24)
     )
 
-    assert checked == 1  # старе навіть не перевірялось (break до лічильника)
+    assert checked == 1  # the old one wasn't even checked (break before the counter)
     assert found == 1
 
 
 async def test_scan_hours_window_respected(db):
     await _seed_group_and_keywords(db, ["квартира"])
-    # повідомлення 2 год тому; вікно лише 1 год → за межами
+    # message 2 hours ago; window is only 1 hour → out of range
     user = FakeUserClient([FakeMessage(1, "квартира", minutes_ago=120)])
     bot = FakeBotClient()
 
@@ -124,14 +124,14 @@ async def test_scan_hours_window_respected(db):
 
 async def test_dedup_skips_already_processed(db):
     await _seed_group_and_keywords(db, ["квартира"])
-    await db.mark_processed(1, 123)  # вже надсилали раніше
+    await db.mark_processed(1, 123)  # already sent earlier
     user = FakeUserClient([FakeMessage(1, "квартира снова")])
     bot = FakeBotClient()
 
     groups, checked, found, errors = await run_scan(user, bot, db, make_settings())
 
     assert checked == 1
-    assert found == 0  # дубль не пересилається
+    assert found == 0  # the duplicate is not re-sent
     assert bot.sent == []
 
 
@@ -139,9 +139,9 @@ async def test_metrics_count_all_checked(db):
     await _seed_group_and_keywords(db, ["квартира"])
     user = FakeUserClient(
         [
-            FakeMessage(1, "продаю велосипед"),  # не збіг
-            FakeMessage(2, "сдаётся квартира"),  # збіг
-            FakeMessage(3, "куплю авто"),  # не збіг
+            FakeMessage(1, "продаю велосипед"),  # no match
+            FakeMessage(2, "сдаётся квартира"),  # match
+            FakeMessage(3, "куплю авто"),  # no match
         ]
     )
     bot = FakeBotClient()
@@ -170,11 +170,11 @@ async def test_turkish_keyword_matches_in_scan(db):
 
     groups, checked, found, errors = await run_scan(user, bot, db, make_settings())
 
-    assert found == 1  # турецький регістр більше не ламає пошук
+    assert found == 1  # Turkish case no longer breaks the search
 
 
 async def test_keyword_matches_inflected_form_in_scan(db):
-    # ключ у називному «квартира» має знайти знахідний «квартиру» (стемінг)
+    # the nominative key "квартира" should find the accusative "квартиру" (stemming)
     await _seed_group_and_keywords(db, ["квартира"])
     user = FakeUserClient([FakeMessage(1, "Сниму квартиру на длительный срок")])
     bot = FakeBotClient()
@@ -199,7 +199,7 @@ async def test_lead_persisted_on_match(db):
 
 async def test_hours_override_widens_window(db):
     await _seed_group_and_keywords(db, ["квартира"])
-    # повідомлення 100 год тому — поза стандартним вікном 24 год
+    # message 100 hours ago — outside the standard 24-hour window
     narrow = await run_scan(
         FakeUserClient([FakeMessage(1, "квартира", minutes_ago=100 * 60)]),
         FakeBotClient(),
@@ -215,4 +215,4 @@ async def test_hours_override_widens_window(db):
         make_settings(scan_hours=24),
         hours_override=200,
     )
-    assert deep[2] == 1  # глибокий скан знаходить
+    assert deep[2] == 1  # the deep scan finds it

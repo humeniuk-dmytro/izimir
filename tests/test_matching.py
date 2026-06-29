@@ -1,10 +1,10 @@
-"""Тести логіки пошуку: нормалізація fold(), стемінг і матчинг.
+"""Tests for the search logic: fold() normalization, stemming and matching.
 
-Доводимо, що:
-  * пошук регістронезалежний для RU/UA/TR;
-  * турецькі İ/I/ı/i не ламають збіг (реальний баг B-TR);
-  * стемінг ловить словоформи: «квартира» знаходить «квартиру/квартиры»;
-  * кейс друга: Cartier × {квартира, снять} не збігається.
+We prove that:
+  * search is case-insensitive for RU/UA/TR;
+  * Turkish İ/I/ı/i do not break a match (the real B-TR bug);
+  * stemming catches word forms: "квартира" finds "квартиру/квартиры";
+  * the friend's case: Cartier × {квартира, снять} does not match.
 """
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ CARTIER = (
 
 
 def _keys(*keywords: str) -> list[str]:
-    """Як у run_scan: ключі проганяються через stem_key."""
+    """As in run_scan: keys are passed through stem_key."""
     return [stem_key(k) for k in keywords]
 
 
-# --- базова нормалізація -------------------------------------------------
+# --- basic normalization -------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -35,7 +35,7 @@ def _keys(*keywords: str) -> list[str]:
         ("снять", "СНЯТЬ квартиру в центре"),
         ("Снять", "хочу снять жильё"),
         ("квартира", "Сдаётся КВАРТИРА посуточно"),
-        ("оренда", "Довгострокова ОРЕНДА житла"),  # українська
+        ("оренда", "Довгострокова ОРЕНДА житла"),  # Ukrainian
         ("продам", "ПРОДАМ срочно"),
     ],
 )
@@ -51,7 +51,7 @@ def test_empty_text_never_matches():
     assert not text_matches("", _keys("квартира"))
 
 
-# --- стемінг / словоформи (нове) -----------------------------------------
+# --- stemming / word forms -----------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -65,7 +65,7 @@ def test_empty_text_never_matches():
     ],
 )
 def test_keyword_matches_all_inflections(text):
-    # один ключ «квартира» ловить усі відмінки
+    # a single key "квартира" catches every case form
     assert text_matches(text, _keys("квартира"))
 
 
@@ -75,27 +75,27 @@ def test_rent_keyword_inflections():
 
 
 def test_distinct_roots_do_not_collide():
-    # «продажа» не повинна ловити «велосипед» тощо
+    # "продажа" must not catch "велосипед" and the like
     assert not text_matches("куплю велосипед", _keys("продажа"))
 
 
-# --- турецький регістр (реальний баг B-TR) -------------------------------
+# --- Turkish case (the real B-TR bug) ------------------------------------
 
 
 @pytest.mark.parametrize(
     "keyword, text",
     [
-        ("satılık", "ACİL SATILIK daire"),  # ı проти .lower()-i
+        ("satılık", "ACİL SATILIK daire"),  # dotless ı vs .lower()-i
         ("satılık", "satılık ev sahibinden"),
         ("kiralık", "KİRALIK daire İzmir"),
-        ("kiralık", "kiralıktır, eşyalı"),  # турецький суфікс -tır
+        ("kiralık", "kiralıktır, eşyalı"),  # Turkish suffix -tır
         ("İzmir", "izmir merkezde kiralık"),
         ("izmir", "IZMIR bornova satılık"),
         ("ev", "Satılık EV deniz manzaralı"),
     ],
 )
 def test_turkish_case_insensitive(keyword, text):
-    assert text_matches(text, _keys(keyword)), f"{keyword!r} має збігтись у {text!r}"
+    assert text_matches(text, _keys(keyword)), f"{keyword!r} should match in {text!r}"
 
 
 def test_turkish_i_variants_fold_equal():
@@ -103,19 +103,19 @@ def test_turkish_i_variants_fold_equal():
 
 
 def test_plain_lower_would_have_failed():
-    # Доказ, що звичайний .lower() НЕ впорався б — саме тому потрібен fold().
+    # Proof that a plain .lower() would NOT cope — which is exactly why fold() is needed.
     assert "satılık" not in "ACİL SATILIK daire".lower()
     assert text_matches("ACİL SATILIK daire", _keys("satılık"))
 
 
-# --- відтворення кейсу друга --------------------------------------------
+# --- reproduction of the friend's case -----------------------------------
 
 
 def test_friend_case_cartier_vs_rent_keywords_no_match():
-    # Друг шукав «квартира»/«снять» — браслет Cartier не містить цих слів.
+    # The friend searched for "квартира"/"снять" — the Cartier bracelet has neither word.
     assert not text_matches(CARTIER, _keys("квартира", "снять"))
 
 
 def test_friend_case_cartier_vs_relevant_keywords_match():
-    # За словами, що реально є в тексті, оголошення знаходиться.
+    # With words that really are in the text, the listing is found.
     assert text_matches(CARTIER, _keys("продам", "грамм"))

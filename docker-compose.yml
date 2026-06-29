@@ -9,10 +9,10 @@ services:
       - DB_PATH=data/izimir.db
       - USER_SESSION=data/user_session
       - BOT_SESSION=data/bot_session
-    stdin_open: true   # потрібно для першої авторизації (номер + код)
+    stdin_open: true   # needed for the first login (phone number + code)
     tty: true
 
-  # Mini App (FastAPI). Вмикається разом із bot; ділить ту саму SQLite (WAL).
+  # Mini App (FastAPI). Runs alongside the bot; shares the same SQLite (WAL).
   web:
     build: .
     restart: unless-stopped
@@ -25,8 +25,8 @@ services:
     expose:
       - "8000"
 
-  # Безкоштовний авто-HTTPS (Let's Encrypt) для Mini App.
-  # WEBAPP_DOMAIN — твій DuckDNS-субдомен, напр. izimir.duckdns.org
+  # Free auto-HTTPS (Let's Encrypt) for the Mini App.
+  # WEBAPP_DOMAIN — your DuckDNS subdomain, e.g. izimir.duckdns.org
   caddy:
     image: caddy:2
     restart: unless-stopped

@@ -1,4 +1,4 @@
-"""Тести валідації Telegram initData (Mini App auth)."""
+"""Tests for Telegram initData validation (Mini App auth)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def test_valid_init_data():
 
 
 def test_tampered_hash_rejected():
-    init = make_init_data(BOT_TOKEN, OWNER_ID) + "0"  # ламаємо hash
+    init = make_init_data(BOT_TOKEN, OWNER_ID) + "0"  # break the hash
     assert validate_init_data(init, BOT_TOKEN) is None
 
 
@@ -53,5 +53,5 @@ def test_owner_accepted():
 
 
 def test_non_owner_rejected():
-    init = make_init_data(BOT_TOKEN, 12345)  # чужий id
+    init = make_init_data(BOT_TOKEN, 12345)  # someone else's id
     assert owner_from_init_data(init, BOT_TOKEN, OWNER_ID) is None

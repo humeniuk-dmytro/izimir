@@ -1,4 +1,4 @@
-"""Тести меню команд та парсингу /scan N."""
+"""Tests for the command menu and /scan N parsing."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from izimir import texts
 from izimir.bot_handlers import register_handlers, set_bot_commands
 from izimir.config import Settings
 
-# Той самий патерн, що в cmd_scan — фіксуємо очікувану поведінку парсингу.
+# The same pattern as in cmd_scan — we pin the expected parsing behavior.
 SCAN_RE = re.compile(r"^/scan(?:\s+(\d+))?$")
 
 
@@ -74,7 +74,7 @@ async def test_set_bot_commands_sends_valid_menu():
     cmds = bot.request.commands
     assert len(cmds) == len(texts.BOT_COMMANDS)
     for c in cmds:
-        # обмеження Telegram: команда lowercase, ≤32; опис ≤256
+        # Telegram limits: command lowercase, ≤32; description ≤256
         assert c.command == c.command.lower()
         assert 1 <= len(c.command) <= 32
         assert 1 <= len(c.description) <= 256
@@ -99,7 +99,7 @@ def test_scan_pattern_rejects(text):
     assert SCAN_RE.match(text) is None
 
 
-# --- інтеграція: /stats, /export, /reset_seen реально виконуються ---------
+# --- integration: /stats, /export, /reset_seen actually run --------------
 
 
 async def test_stats_export_reset_run(db):
@@ -115,7 +115,7 @@ async def test_stats_export_reset_run(db):
 
     ev = FakeEvent(settings.owner_id, "/export")
     await h["cmd_export"](ev)
-    assert bot.files, "експорт мав надіслати CSV-файл"
+    assert bot.files, "export should have sent a CSV file"
 
     await db.mark_processed(1, 1)
     ev = FakeEvent(settings.owner_id, "/reset_seen")

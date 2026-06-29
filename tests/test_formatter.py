@@ -1,4 +1,4 @@
-"""Тести формату уведомлення та inline-кнопок (ТЗ п.4)."""
+"""Tests for the notification format and inline buttons (spec §4)."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def test_private_group_uses_c_link():
     )
     pairs = _button_pairs(buttons)
     assert (texts.BTN_OPEN_MESSAGE, "https://t.me/c/123456/77") in pairs
-    # для приватної без username кнопка групи веде на invite-link
+    # for a private group without a username the group button uses the invite link
     assert (texts.BTN_OPEN_GROUP, "https://t.me/+abc") in pairs
 
 
@@ -77,5 +77,5 @@ def test_long_text_truncated():
     msg = FakeMsg(1, long_text, sender)
     body, _ = format_found_message(msg, "G", "g", 1, "l")
     assert "…" in body
-    # тіло не має бути надмірним (обрізано до 1000 + обгортка)
+    # the body must not be excessive (truncated to 1000 + wrapper)
     assert len(body) < 1200

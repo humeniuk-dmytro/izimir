@@ -1,9 +1,9 @@
-"""Тести шару БД: групи, ключові слова, дедуп, scan_log, лічильники."""
+"""Tests for the DB layer: groups, keywords, dedup, scan_log, counters."""
 
 from __future__ import annotations
 
 
-# --- ключові слова -------------------------------------------------------
+# --- keywords ------------------------------------------------------------
 
 
 async def test_add_list_keywords(db):
@@ -15,7 +15,7 @@ async def test_add_list_keywords(db):
 
 async def test_keyword_duplicate_case_insensitive(db):
     assert await db.add_keyword("Снять")
-    # NOCASE: повторне додавання іншим регістром відхиляється
+    # NOCASE: adding the same word in a different case is rejected
     assert not await db.add_keyword("снять")
     assert await db.keyword_count() == 1
 
@@ -24,10 +24,10 @@ async def test_remove_keyword_case_insensitive(db):
     await db.add_keyword("Квартира")
     assert await db.remove_keyword("КВАРТИРА")
     assert await db.keyword_count() == 0
-    assert not await db.remove_keyword("неіснуюче")
+    assert not await db.remove_keyword("nonexistent")
 
 
-# --- групи ---------------------------------------------------------------
+# --- groups --------------------------------------------------------------
 
 
 async def test_add_group_with_access_hash(db):
@@ -48,7 +48,7 @@ async def test_deactivate_group_excluded_from_active(db):
     await db.deactivate_group(1)
     assert await db.get_active_groups() == []
     assert await db.group_count() == 0
-    # але лишається в повному списку
+    # but it stays in the full list
     assert len(await db.list_groups()) == 1
 
 
@@ -60,27 +60,27 @@ async def test_remove_group_by_id_and_link(db):
     assert await db.group_count() == 0
 
 
-# --- дедуплікація --------------------------------------------------------
+# --- deduplication -------------------------------------------------------
 
 
 async def test_processed_messages_dedup(db):
     assert not await db.is_processed(10, 1)
     await db.mark_processed(10, 1)
     assert await db.is_processed(10, 1)
-    # повторна позначка не падає (INSERT OR IGNORE)
+    # marking again does not fail (INSERT OR IGNORE)
     await db.mark_processed(10, 1)
-    # той самий msg_id в іншій групі — окремо
+    # the same msg_id in another group — tracked separately
     assert not await db.is_processed(10, 2)
 
 
 async def test_cleanup_processed_messages(db):
     await db.mark_processed(1, 1)
-    # свіжі не видаляються
+    # fresh ones are not removed
     assert await db.cleanup_processed_messages(keep_days=7) == 0
     assert await db.is_processed(1, 1)
 
 
-# --- scan_log та лічильники ---------------------------------------------
+# --- scan_log and counters -----------------------------------------------
 
 
 async def test_scan_log_lifecycle(db):
@@ -95,14 +95,14 @@ async def test_scan_log_lifecycle(db):
 
 
 async def test_total_found_counts_leads(db):
-    # total_found уніфіковано з finds/stats (ТЗ 5.3)
+    # total_found is unified with finds/stats (spec 5.3)
     assert await db.total_found() == 0
     await _add_find(db, 1)
     await _add_find(db, 2)
     assert await db.total_found() == 2
 
 
-# --- finds (ліди) --------------------------------------------------------
+# --- finds (leads) -------------------------------------------------------
 
 
 async def _add_find(
@@ -124,7 +124,7 @@ async def test_add_and_recent_finds(db):
 
 async def test_add_find_idempotent(db):
     await _add_find(db, 1)
-    await _add_find(db, 1)  # той самий (message_id, group_id) — не дублюється
+    await _add_find(db, 1)  # same (message_id, group_id) — not duplicated
     assert len(await db.recent_finds()) == 1
 
 
@@ -161,12 +161,12 @@ async def test_command_queue_lifecycle(db):
     assert cmd["id"] == cid
     assert cmd["type"] == "scan"
     assert cmd["payload"] == {"days": 7}
-    # claimed → більше не pending
+    # claimed → no longer pending
     assert await db.claim_pending_command() is None
-    await db.finish_command(cid, "done", "ок")
+    await db.finish_command(cid, "done", "ok")
     got = await db.get_command(cid)
     assert got["status"] == "done"
-    assert got["result"] == "ок"
+    assert got["result"] == "ok"
 
 
 async def test_command_queue_is_fifo(db):
