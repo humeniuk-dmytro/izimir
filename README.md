@@ -62,6 +62,9 @@ The image is reproducible (`uv.lock`, `uv sync --frozen`); secrets and runtime s
 kept out via `.dockerignore`. SQLite DB and Telethon sessions live in the bind-mounted
 `./data`.
 
+For a full step-by-step VPS deployment (server setup, firewall, first login, HTTPS for
+the Mini App), see **[DEPLOY.md](DEPLOY.md)**.
+
 ---
 
 ## ⚙️ Configuration (`.env`)
